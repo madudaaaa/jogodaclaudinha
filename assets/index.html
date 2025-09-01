@@ -1,0 +1,386 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>School Ninja</title>
+  <style>
+    body {
+      margin: 0;
+      overflow: hidden;
+      font-family: Arial, sans-serif;
+      background: #e0e0e0;
+    }
+
+    canvas {
+      display: block;
+      cursor: crosshair;
+    }
+
+    /* HUD */
+    #hud {
+      position: absolute;
+      top: 15px;
+      left: 15px;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      z-index: 2;
+    }
+
+    #score, #points {
+      font-size: 26px;
+      font-weight: bold;
+      color: #333;
+      background: rgba(255, 255, 255, 0.8);
+      padding: 8px 12px;
+      border-radius: 12px;
+      box-shadow: 0 4px 8px rgba(0,0,0,0.2);
+    }
+
+    #livesContainer {
+      display: flex;
+      align-items: center;
+      gap: 5px;
+      background: rgba(255, 255, 255, 0.9);
+      padding: 8px 12px;
+      border-radius: 12px;
+      box-shadow: 0 4px 8px rgba(0,0,0,0.2);
+    }
+
+    #lives {
+      font-size: 28px;
+      display: flex;
+      gap: 5px;
+    }
+
+    .life {
+      display: inline-block;
+      animation: pulse 1s infinite;
+    }
+
+    @keyframes pulse {
+      0%, 100% { transform: scale(1); }
+      50% { transform: scale(1.3); }
+    }
+
+    #gameOver, #rewardScreen {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      font-size: 36px;
+      font-weight: bold;
+      background: rgba(0, 0, 0, 0.7);
+      color: white;
+      padding: 20px 40px;
+      border-radius: 20px;
+      display: none;
+      text-align: center;
+      z-index: 3;
+    }
+
+    #gameOver span, #rewardScreen span {
+      font-size: 24px;
+      display: block;
+      margin-top: 10px;
+    }
+
+    #backgroundImage {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background-image: url('fotosala.jpg');
+      background-size: cover;
+      background-position: center;
+      background-repeat: no-repeat;
+      z-index: -1;
+    }
+
+    /* SELEÇÃO DE NÍVEL */
+    #levelSelect {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      background: rgba(255, 255, 255, 0.9);
+      padding: 30px;
+      border-radius: 20px;
+      text-align: center;
+      font-size: 24px;
+      z-index: 4;
+      box-shadow: 0 6px 15px rgba(0,0,0,0.3);
+    }
+
+    #levelSelect button {
+      font-size: 20px;
+      margin: 10px;
+      padding: 12px 25px;
+      border: none;
+      border-radius: 12px;
+      cursor: pointer;
+      color: white;
+      font-weight: bold;
+      transition: transform 0.2s, opacity 0.2s;
+    }
+
+    #levelSelect button:hover {
+      transform: scale(1.1);
+      opacity: 0.9;
+    }
+
+    /* CORES DE CADA NÍVEL */
+    #btnFacil { background: #4CAF50; }   /* Verde */
+    #btnMedio { background: #ff9800; }   /* Laranja */
+    #btnDificil { background: #f44336; } /* Vermelho */
+
+    .locked {
+      background: #777 !important;
+      cursor: not-allowed;
+      opacity: 0.6;
+      transform: none !important;
+    }
+  </style>
+</head>
+<body>
+  <div id="backgroundImage"></div>
+
+  <!-- HUD -->
+  <div id="hud">
+    <div id="score">Score: 0</div>
+    <div id="points">Pontos: 0</div>
+    <div id="livesContainer">
+      <span id="lives"></span>
+    </div>
+  </div>
+
+  <!-- Seleção de nível -->
+  <div id="levelSelect">
+    <p>Escolha o nível:</p>
+    <button id="btnFacil" onclick="startGame('facil')">Fácil</button>
+    <button id="btnMedio" onclick="startGame('medio')" class="locked" disabled>Médio 🔒</button>
+    <button id="btnDificil" onclick="startGame('dificil')" class="locked" disabled>Difícil 🔒</button>
+  </div>
+
+  <!-- Tela de recompensa -->
+  <div id="rewardScreen">
+    🎉 Você ganhou! <br>
+    <span id="rewardText"></span>
+    <button onclick="restartGame()">Jogar novamente</button>
+  </div>
+
+  <!-- Tela de Game Over -->
+  <div id="gameOver">
+    GAME OVER<br>
+    <span id="finalPoints"></span><br>
+    <button onclick="restartGame()">Reiniciar</button>
+  </div>
+
+  <canvas id="gameCanvas"></canvas>
+
+  <script>
+    const canvas = document.getElementById("gameCanvas");
+    const ctx = canvas.getContext("2d");
+    canvas.width = window.innerWidth;
+    canvas.height = window.innerHeight;
+
+    let items = [];
+    let score = 0;
+    let points = 0;
+    let lives = 3;
+    let gameOver = false;
+    let spawnRate = 1000;
+    let spawnInterval;
+    let level = "";
+    let rewardGiven = false;
+
+    let unlocked = { facil: true, medio: false, dificil: false };
+
+    const schoolItems = [
+      { symbol: "✏️", color: "yellow" },
+      { symbol: "📘", color: "blue" },
+      { symbol: "📏", color: "green" },
+      { symbol: "✂️", color: "red" },
+      { symbol: "🖊️", color: "purple" },
+      { symbol: "🧮", color: "orange" },
+      { symbol: "📒", color: "brown" },
+      { symbol: "📚", color: "darkblue" },
+      { symbol: "📐", color: "teal" },
+      { symbol: "📄", color: "black" }
+    ];
+
+    const levelSettings = {
+      facil: { spawn: 1200, goal: 100, reward: "uma ✒️ Caneta", unlock: "medio" },
+      medio: { spawn: 900, goal: 200, reward: "um 📓 Caderno", unlock: "dificil" },
+      dificil: { spawn: 600, goal: 300, reward: "uma 🎒 Mochila", unlock: null }
+    };
+
+    class Item {
+      constructor() {
+        this.x = Math.random() * (canvas.width - 50);
+        this.y = -50; // COMEÇA ACIMA DA TELA
+        this.size = 60;
+        let obj = schoolItems[Math.floor(Math.random() * schoolItems.length)];
+        this.symbol = obj.symbol;
+        this.color = obj.color;
+        this.speedY = Math.random() * 4 + 3; // CAI PARA BAIXO
+        this.speedX = (Math.random() - 0.5) * 4;
+        this.isCut = false;
+      }
+      draw() {
+        ctx.textAlign = "center";
+        ctx.textBaseline = "middle";
+        ctx.font = this.size + "px Arial";
+        ctx.fillStyle = this.color;
+        ctx.fillText(this.symbol, this.x, this.y);
+      }
+      update() {
+        this.x += this.speedX;
+        this.y += this.speedY;
+        this.draw();
+      }
+    }
+
+    function spawnItem() {
+      if (!gameOver) items.push(new Item());
+    }
+
+    function animate() {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      for (let i = items.length - 1; i >= 0; i--) {
+        const item = items[i];
+        item.update();
+        if (item.y > canvas.height + 50 && !item.isCut) {
+          items.splice(i, 1);
+          loseLife();
+        }
+      }
+      if (!gameOver) requestAnimationFrame(animate);
+    }
+
+    function loseLife() {
+      lives--;
+      updateLives();
+      if (lives <= 0) endGame();
+    }
+
+    function updateLives() {
+      const livesContainer = document.getElementById("lives");
+      livesContainer.innerHTML = "";
+      for (let i = 0; i < lives; i++) {
+        const span = document.createElement("span");
+        span.classList.add("life");
+        span.innerText = "❤️";
+        livesContainer.appendChild(span);
+      }
+    }
+
+    function endGame() {
+      gameOver = true;
+      clearInterval(spawnInterval);
+      document.getElementById("finalPoints").innerText = "Pontos: " + points;
+      document.getElementById("gameOver").style.display = "block";
+    }
+
+    function checkReward() {
+      if (!rewardGiven && points >= levelSettings[level].goal) {
+        rewardGiven = true;
+        clearInterval(spawnInterval);
+        gameOver = true;
+
+        let next = levelSettings[level].unlock;
+        if (next) {
+          unlocked[next] = true;
+          updateLevelButtons();
+        }
+
+        document.getElementById("rewardText").innerText =
+          "Você ganhou " + levelSettings[level].reward + "!";
+        document.getElementById("rewardScreen").style.display = "block";
+      }
+    }
+
+    function splash(x, y) {
+      ctx.beginPath();
+      ctx.arc(x, y, 25, 0, Math.PI * 2);
+      ctx.fillStyle = "rgba(255,0,0,0.4)";
+      ctx.fill();
+    }
+
+    canvas.addEventListener("mousemove", (e) => {
+      for (let i = items.length - 1; i >= 0; i--) {
+        const item = items[i];
+        const dx = e.clientX - item.x;
+        const dy = e.clientY - item.y;
+        const distance = Math.sqrt(dx * dx + dy * dy);
+        if (distance < 40 && !item.isCut) {
+          item.isCut = true;
+          items.splice(i, 1);
+          splash(item.x, item.y);
+          score++;
+          points += 10;
+          document.getElementById("score").innerText = "Score: " + score;
+          document.getElementById("points").innerText = "Pontos: " + points;
+          checkReward();
+        }
+      }
+    });
+
+    function startGame(selectedLevel) {
+      if (!unlocked[selectedLevel]) return;
+
+      level = selectedLevel;
+      spawnRate = levelSettings[level].spawn;
+      document.getElementById("levelSelect").style.display = "none";
+
+      updateLives();
+      animate();
+      spawnInterval = setInterval(() => {
+        if (!gameOver) {
+          spawnItem();
+          if (spawnRate > 400) spawnRate -= 10;
+        }
+      }, spawnRate);
+    }
+
+    function restartGame() {
+      items = [];
+      score = 0;
+      points = 0;
+      lives = 3;
+      gameOver = false;
+      rewardGiven = false;
+      document.getElementById("score").innerText = "Score: 0";
+      document.getElementById("points").innerText = "Pontos: 0";
+      updateLives();
+      document.getElementById("gameOver").style.display = "none";
+      document.getElementById("rewardScreen").style.display = "none";
+      document.getElementById("levelSelect").style.display = "block";
+      updateLevelButtons();
+    }
+
+    function updateLevelButtons() {
+      let btnMedio = document.getElementById("btnMedio");
+      let btnDificil = document.getElementById("btnDificil");
+
+      if (unlocked.medio) {
+        btnMedio.disabled = false;
+        btnMedio.classList.remove("locked");
+        btnMedio.innerText = "Médio";
+      }
+      if (unlocked.dificil) {
+        btnDificil.disabled = false;
+        btnDificil.classList.remove("locked");
+        btnDificil.innerText = "Difícil";
+      }
+    }
+
+    window.addEventListener("resize", () => {
+      canvas.width = window.innerWidth;
+      canvas.height = window.innerHeight;
+    });
+  </script>
+</body>
+</html>
